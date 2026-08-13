@@ -35,5 +35,6 @@ libraries:
 
 images:
 - you cannot fetch or link external images - any image url you invent will render broken. use inline svg, css art, gradients, and emoji for all visuals.
+- one exception: the globe.gl earth textures at https://unpkg.com/three-globe/example/img/ are real (earth-night.jpg, earth-blue-marble.jpg, earth-dark.jpg, earth-topology.png) and allowed for globes.
 
 go as far as the request deserves: interactive 3d, animation, data viz, games - the whole page is yours.
