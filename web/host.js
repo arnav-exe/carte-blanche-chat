@@ -2,15 +2,23 @@ const canvas = document.getElementById("canvas");
 const promptEl = document.getElementById("prompt");
 const statusEl = document.getElementById("status");
 const sourceEl = document.getElementById("source");
+const chipEl = document.getElementById("chip");
+const autoEl = document.getElementById("autosend");
 
 const MARKER = "<!--SHELL-END-->";
 const SHELL_LIMIT = 8192;   // no marker by this many chars -> stop waiting, render what we have
 const SHELL_TIMEOUT = 8000;
 const TAIL = 12;            // chars held back so a trailing ``` fence never hits the page
+const ACTION_DEBOUNCE = 300;  // rapid ui.emit bursts collapse into one turn
 
 let messages = [];
 let controller = null;
 let lastPage = "";
+let preludeSrc = "";
+let actionBuf = [];
+let actionTimer = null;
+
+fetch("prelude.js").then(r => r.text()).then(t => preludeSrc = t);
 
 // fresh same-origin iframe per turn - throwing the realm away is the cleanup strategy
 function newFrame() {
@@ -20,13 +28,13 @@ function newFrame() {
     return frame.contentDocument;
 }
 
-async function send() {
-    const text = promptEl.value.trim();
-    if (!text) return;
+async function sendMessage(text) {
     controller?.abort();
     controller = new AbortController();
+    actionBuf = [];
+    clearTimeout(actionTimer);
+    chipEl.hidden = true;
     messages.push({ role: "user", content: text });
-    promptEl.value = "";
     statusEl.textContent = "thinking...";
 
     const t0 = performance.now();
@@ -69,6 +77,9 @@ async function send() {
             doc = newFrame();
             doc.open();
             doc.write(html);
+            const s = doc.createElement("script");
+            s.textContent = preludeSrc;
+            (doc.head || doc.documentElement)?.appendChild(s);
             flushQ();
         };
         if (document.startViewTransition) document.startViewTransition(mount);
@@ -146,6 +157,50 @@ async function send() {
                 statusEl.textContent = "error: " + event.message.slice(0, 120);
             }
         }
+    }
+}
+
+function send() {
+    const text = promptEl.value.trim();
+    if (!text) return;
+    promptEl.value = "";
+    sendMessage(text);
+}
+
+// events flowing back from the generated page
+window.addEventListener("message", (e) => {
+    if (e.source !== document.getElementById("page")?.contentWindow) return;
+    const d = e.data;
+    if (!d || !d.kind) return;
+    if (d.kind === "user_action") {
+        console.log("[cb] user_action", JSON.stringify(d));
+        actionBuf.push(d);
+        clearTimeout(actionTimer);
+        actionTimer = setTimeout(flushActions, ACTION_DEBOUNCE);
+    } else if (d.kind === "page_error") {
+        console.log("[cb] page_error", JSON.stringify(d));
+        statusEl.textContent = "page error: " + (d.message || "").slice(0, 90);
+    }
+});
+
+// rapid bursts collapse to the last event per action name
+function flushActions() {
+    const seen = {};
+    for (const a of actionBuf) seen[a.action || a.label || "action"] = a;
+    const events = Object.values(seen);
+    actionBuf = [];
+    if (!events.length) return;
+
+    const text = events.map(a => `[ui event] action=${a.action || "?"}${a.label ? ` label="${a.label}"` : ""}${a.data !== undefined ? " data=" + JSON.stringify(a.data) : ""}`).join("\n");
+    const label = (events[0].label || events[0].action) + (events.length > 1 ? ` +${events.length - 1}` : "");
+    console.log("[cb] flush", JSON.stringify({ auto: autoEl.checked, text }));
+
+    if (autoEl.checked) {
+        sendMessage(text);
+    } else {
+        chipEl.textContent = "⚡ " + label;
+        chipEl.hidden = false;
+        chipEl.onclick = () => { chipEl.hidden = true; sendMessage(text); };
     }
 }
 

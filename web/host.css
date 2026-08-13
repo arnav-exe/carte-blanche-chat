@@ -77,6 +77,24 @@ body {
 #dock button:hover { background: rgba(255, 255, 255, 0.18); }
 #send { background: #4f5df0 !important; }
 
+#chip {
+    background: rgba(255, 190, 80, 0.16) !important;
+    border: 1px solid rgba(255, 190, 80, 0.45) !important;
+    color: #ffd58a !important;
+    white-space: nowrap;
+}
+
+#auto {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.72rem;
+    color: #8b93a3;
+    cursor: pointer;
+    user-select: none;
+}
+#auto input { accent-color: #4f5df0; }
+
 #source {
     position: fixed;
     inset: 0 0 5rem 0;
