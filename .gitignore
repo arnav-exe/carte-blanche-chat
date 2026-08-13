@@ -1,6 +1,8 @@
 docs/
 *.md
 !README.md
+!server/prompts/*.md
+runs/
 
 #--------------------------------------------------#
 # The following was generated with gitignore.nvim: #

@@ -1,0 +1,13 @@
+import os
+from pathlib import Path
+
+# load .env if present - keeps the api key out of shell profiles, no dotenv dep
+_env = Path(__file__).parent.parent / ".env"
+if _env.exists():
+    for line in _env.read_text().splitlines():
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+
+MODEL = os.getenv("MODEL", "claude-opus-5")
+EFFORT = os.getenv("EFFORT", "")  # empty = api default (high)
