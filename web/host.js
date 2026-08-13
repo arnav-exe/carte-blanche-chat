@@ -48,18 +48,28 @@ async function send() {
     let tail = "";
     let page = "";
     let doc = null;
+    let outQ = "";        // writes queue here until the view transition actually mounts the frame
+    let closed = false;
     let shellTimer = null;
 
-    // the signature moment: old page transitions out, new shell paints in one go
+    const flushQ = () => {
+        if (!doc) return;
+        if (outQ) { doc.write(outQ); outQ = ""; }
+        if (closed) doc.close();
+    };
+
+    // the signature moment: old page transitions out, new shell paints in one go.
+    // startViewTransition runs its callback async, hence the queue above
     const goLive = (html) => {
         clearTimeout(shellTimer);
         phase = "live";
         tShell = performance.now() - t0;
+        page += html;
         const mount = () => {
             doc = newFrame();
             doc.open();
             doc.write(html);
-            page += html;
+            flushQ();
         };
         if (document.startViewTransition) document.startViewTransition(mount);
         else mount();
@@ -68,9 +78,10 @@ async function send() {
 
     const writeLive = (text) => {
         const chunk = tail + text;
-        doc.write(chunk.slice(0, -TAIL));
+        outQ += chunk.slice(0, -TAIL);
         page += chunk.slice(0, -TAIL);
         tail = chunk.slice(-TAIL);
+        flushQ();
     };
 
     const write = (text) => {
@@ -117,9 +128,11 @@ async function send() {
             } else if (event.t === "done") {
                 if (phase !== "live") goLive(shellBuf || pending);  // marker or even doctype never came
                 const flush = tail.replace(/\s*```\s*$/, "");
-                doc.write(flush);
-                doc.close();
+                tail = "";
+                outQ += flush;
                 page += flush;
+                closed = true;
+                flushQ();
                 lastPage = page;
                 messages.push({ role: "assistant", content: page });
                 const total = ((performance.now() - t0) / 1000).toFixed(1);
