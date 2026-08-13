@@ -4,6 +4,19 @@
 
 every reply is a full webpage. no chat pane, no components - the model renders the entire viewport, then you talk to the page.
 
+## quickstart
+
+- `git clone https://github.com/arnav-exe/carte-blanche-chat && cd carte-blanche-chat`
+- `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
+- create `.env` in the repo root: `ANTHROPIC_API_KEY=sk-ant-...`
+- `.venv/bin/uvicorn main:app --app-dir server --reload`
+- open http://localhost:8000 and ask for anything
+
+optional knobs:
+
+- `.env`: `MODEL=claude-sonnet-5` (cheap dev, default is opus) · `EFFORT=low` · `MAX_TOKENS=24000` · `THEME=<daisyui theme>` · `PIPELINE=staged` + `BRIEF_MODEL=...` · `FIXTURE=runs/<run>/stream.jsonl` (replay a recorded stream, no api calls)
+- url params: `?mode=raw` (same-dom rendering w/ cleanup instrumentation, true morphs) · `?mode=raw-bare` (no guardrails at all, for the chaos) · `?libs=allowlist` (csp-pin libraries to the toolbox)
+
 ## demos
 
 exact prompts/interactions used, in order. demos 1-3 are one continuous conversation on `claude-opus-5` (EFFORT=medium).
