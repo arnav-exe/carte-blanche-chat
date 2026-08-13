@@ -1,8 +1,10 @@
+import json
+import time
 from pathlib import Path
 
 import anthropic
 
-from config import MODEL, EFFORT, MAX_TOKENS
+from config import MODEL, EFFORT, MAX_TOKENS, FIXTURE
 
 SYSTEM = (Path(__file__).parent / "prompts" / "system.md").read_text()
 
@@ -11,6 +13,12 @@ client = anthropic.Anthropic()
 
 # single pipeline for now - staged brief/render split comes later
 def stream_page(messages: list):
+    if FIXTURE:  # replay a recorded stream - free harness dev, no tokens burned
+        for line in open(FIXTURE):
+            time.sleep(0.012)
+            yield json.loads(line)
+        return
+
     kwargs = {
         "model": MODEL,
         "max_tokens": MAX_TOKENS,

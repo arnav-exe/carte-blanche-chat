@@ -12,3 +12,4 @@ if _env.exists():
 MODEL = os.getenv("MODEL", "claude-opus-5")
 EFFORT = os.getenv("EFFORT", "")  # empty = api default (high)
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "64000"))  # hard spend ceiling per turn - thinking counts too
+FIXTURE = os.getenv("FIXTURE", "")  # path to a recorded runs/*/stream.jsonl - replays it instead of calling the api
