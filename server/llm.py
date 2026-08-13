@@ -2,9 +2,7 @@ from pathlib import Path
 
 import anthropic
 
-from config import MODEL, EFFORT
-
-MAX_TOKENS = 64000  # full pages are long, thinking counts against this too
+from config import MODEL, EFFORT, MAX_TOKENS
 
 SYSTEM = (Path(__file__).parent / "prompts" / "system.md").read_text()
 

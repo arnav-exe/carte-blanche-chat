@@ -7,7 +7,8 @@ if _env.exists():
     for line in _env.read_text().splitlines():
         if line and not line.startswith("#") and "=" in line:
             k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
+            os.environ.setdefault(k.strip(), v.strip().strip("\"'"))
 
 MODEL = os.getenv("MODEL", "claude-opus-5")
 EFFORT = os.getenv("EFFORT", "")  # empty = api default (high)
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", "64000"))  # hard spend ceiling per turn - thinking counts too
