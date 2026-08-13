@@ -91,13 +91,14 @@ const scopeCss = (css) => `@scope (#raw-root) {\n${css.replace(/(^|[,\s{}])(body
 
 function execScript(node) {
     const s = document.createElement("script");
+    if (node.type) s.type = node.type;  // modules etc - wrapping them would break imports
     if (node.src) {
         if (loadedSrcs.has(node.src)) return;
         loadedSrcs.add(node.src);
         s.src = node.src;
         s.async = false;
     } else {
-        s.textContent = MODE === "raw" ? `(() => {\n${node.textContent}\n})()` : node.textContent;
+        s.textContent = MODE === "raw" && node.type !== "module" ? `(() => {\n${node.textContent}\n})()` : node.textContent;
     }
     executing = true;
     try { rawRoot.appendChild(s); } finally { executing = false; }
@@ -144,7 +145,8 @@ function safeCut(s) {
 function rawAppendHtml(html) {
     html.replace(/<script([^>]*)>([\s\S]*?)<\/script>/gi, (m, attrs, body) => {
         const srcm = attrs.match(/src=["']([^"']+)["']/i);
-        execScript(srcm ? { src: new URL(srcm[1], location.href).href } : { textContent: body });
+        const typem = attrs.match(/type=["']([^"']+)["']/i);
+        execScript({ src: srcm ? new URL(srcm[1], location.href).href : "", textContent: body, type: typem ? typem[1] : "" });
         return "";
     });
     const clean = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<\/(body|html)>/gi, "");
