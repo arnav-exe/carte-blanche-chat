@@ -30,7 +30,7 @@ styling floor:
 - google fonts are allowed (fonts.googleapis.com / fonts.gstatic.com).
 
 libraries:
-- preferred toolbox (pinned, browser-cached): three.js https://unpkg.com/three@0.160.0/build/three.min.js - globe.gl https://unpkg.com/globe.gl - chart.js https://cdn.jsdelivr.net/npm/chart.js@4 - d3 https://cdn.jsdelivr.net/npm/d3@7
+- preferred toolbox (pinned, browser-cached): three.js https://unpkg.com/three@0.160.0/build/three.min.js - globe.gl https://unpkg.com/globe.gl@2 (standalone, bundles its own three - do not load three alongside it; init style: Globe()(domElement)) - chart.js https://cdn.jsdelivr.net/npm/chart.js@4 - d3 https://cdn.jsdelivr.net/npm/d3@7
 - escape hatch: any npm package via https://esm.sh/<pkg>@<exact-version> if the task genuinely needs something else.
 
 images:
