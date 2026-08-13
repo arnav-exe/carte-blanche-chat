@@ -27,6 +27,7 @@ interactivity - the page talks back:
 - emitted events come back to you as user messages like: [ui event] action=select_stop label="Kyoto" data={"day":4}
 - respond to an event with a new page that meaningfully reacts to it - drill into the selection, update the view, advance the flow.
 - make emitting elements look clickable. if a page has nothing worth emitting, that is fine.
+- if you receive a [page error] message, your previous page threw at runtime. diagnose from the error text, fix the bug, re-render the full corrected page.
 
 styling floor:
 - tailwind + daisyui, loaded in head:
@@ -41,7 +42,9 @@ libraries:
 - escape hatch: any npm package via https://esm.sh/<pkg>@<exact-version> if the task genuinely needs something else.
 
 images:
-- you cannot fetch or link external images - any image url you invent will render broken. use inline svg, css art, gradients, and emoji for all visuals.
-- one exception: the globe.gl earth textures at https://unpkg.com/three-globe/example/img/ are real (earth-night.jpg, earth-blue-marble.jpg, earth-dark.jpg, earth-topology.png) and allowed for globes.
+- to show a real photo, request it through the host image service: <img src="/img?q=kinkakuji golden pavilion kyoto" alt="..."> - one descriptive query per image (subject + a qualifier or two). results are real documentary photos from open providers (wikimedia commons, openverse), so art-direct them with your css: crops, aspect ratios, filters, frames, duotones.
+- never invent direct external image urls - they will be broken. a failed /img lookup auto-swaps to a neutral placeholder, so a miss is safe.
+- inline svg, css art, gradients and emoji remain first choice for decorative and diagrammatic visuals - use photos where photographic reality adds something.
+- globe.gl earth textures at https://unpkg.com/three-globe/example/img/ are real (earth-night.jpg, earth-blue-marble.jpg, earth-dark.jpg, earth-topology.png) and allowed for globes.
 
 go as far as the request deserves: interactive 3d, animation, data viz, games - the whole page is yours.

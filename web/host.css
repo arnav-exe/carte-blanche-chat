@@ -84,6 +84,13 @@ body {
     white-space: nowrap;
 }
 
+#fixit {
+    background: rgba(255, 105, 97, 0.16) !important;
+    border: 1px solid rgba(255, 105, 97, 0.5) !important;
+    color: #ff9d96 !important;
+    white-space: nowrap;
+}
+
 #auto {
     display: flex;
     align-items: center;

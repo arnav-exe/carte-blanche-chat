@@ -4,6 +4,7 @@ const statusEl = document.getElementById("status");
 const sourceEl = document.getElementById("source");
 const chipEl = document.getElementById("chip");
 const autoEl = document.getElementById("autosend");
+const fixitEl = document.getElementById("fixit");
 
 const MARKER = "<!--SHELL-END-->";
 const SHELL_LIMIT = 8192;   // no marker by this many chars -> stop waiting, render what we have
@@ -17,6 +18,8 @@ let lastPage = "";
 let preludeSrc = "";
 let actionBuf = [];
 let actionTimer = null;
+let pageErrors = [];
+let streaming = false;
 
 fetch("prelude.js").then(r => r.text()).then(t => preludeSrc = t);
 
@@ -34,6 +37,9 @@ async function sendMessage(text) {
     actionBuf = [];
     clearTimeout(actionTimer);
     chipEl.hidden = true;
+    fixitEl.hidden = true;
+    pageErrors = [];
+    streaming = true;
     messages.push({ role: "user", content: text });
     statusEl.textContent = "thinking...";
 
@@ -152,8 +158,11 @@ async function sendMessage(text) {
                 if (event.stop_reason === "refusal") statusEl.textContent = "model declined - try rephrasing";
                 else if (event.stop_reason === "max_tokens") statusEl.textContent = `truncated at ${event.usage.out} tok`;
                 else statusEl.textContent = `paint ${paint}s · ${total}s · ${event.usage.out} tok (${rate}/s)`;
+                streaming = false;
+                maybeFixit();
             } else if (event.t === "error") {
                 clearTimeout(shellTimer);
+                streaming = false;
                 statusEl.textContent = "error: " + event.message.slice(0, 120);
             }
         }
@@ -179,9 +188,24 @@ window.addEventListener("message", (e) => {
         actionTimer = setTimeout(flushActions, ACTION_DEBOUNCE);
     } else if (d.kind === "page_error") {
         console.log("[cb] page_error", JSON.stringify(d));
+        pageErrors.push(d);
         statusEl.textContent = "page error: " + (d.message || "").slice(0, 90);
+        maybeFixit();
     }
 });
+
+// errors during streaming wait until the page settles, then the chip offers a repair turn
+function maybeFixit() {
+    if (streaming || !pageErrors.length) return;
+    fixitEl.textContent = "⚠ fix page" + (pageErrors.length > 1 ? ` (${pageErrors.length})` : "");
+    fixitEl.hidden = false;
+}
+
+fixitEl.onclick = () => {
+    const lines = pageErrors.slice(0, 3).map(e => e.message + (e.line ? ` (line ${e.line})` : ""));
+    fixitEl.hidden = true;
+    sendMessage("[page error] " + lines.join(" | ") + " - the page you rendered threw at runtime. fix the bug and re-render the corrected page.");
+};
 
 // rapid bursts collapse to the last event per action name
 function flushActions() {
