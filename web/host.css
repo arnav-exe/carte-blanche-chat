@@ -102,6 +102,12 @@ body {
 }
 #auto input { accent-color: #4f5df0; }
 
+#prev, #next { padding: 0.45rem 0.65rem !important; }
+#prev:disabled, #next:disabled { opacity: 0.3; cursor: default; }
+#pos { font-size: 0.72rem; color: #8b93a3; white-space: nowrap; }
+
+#raw-root { min-height: 100vh; }
+
 #source {
     position: fixed;
     inset: 0 0 5rem 0;
