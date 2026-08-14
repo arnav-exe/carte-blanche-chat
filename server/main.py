@@ -86,4 +86,5 @@ def chat(body: dict):
     return StreamingResponse(gen(), media_type="text/event-stream")
 
 
-app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="web")
+_static = ROOT / "host" / "dist" if (ROOT / "host" / "dist").exists() else ROOT / "web"  # svelte build, or the v1 shell as fallback
+app.mount("/", StaticFiles(directory=_static, html=True), name="web")
