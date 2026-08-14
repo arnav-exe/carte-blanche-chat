@@ -13,7 +13,7 @@ SYSTEM = (Path(__file__).parent / "prompts" / "system.md").read_text()
 if THEME:
     SYSTEM += f'\n\ntheme pin:\n- use data-theme="{THEME}" on <html> and build within that palette unless the user explicitly asks for a different look.'
 
-BRIEF_SYSTEM = "you are the planning half of a two stage page generator. given the conversation, reply with a terse brief for the renderer: 3-6 lines covering content outline, layout direction, palette/type vibe, and which toolbox libraries to use (if any). no html, no prose padding."
+BRIEF_SYSTEM = "you are the creative director of a two stage page generator. users state goals, not layouts - weigh 2-3 candidate presentations (eg for places: globe vs street map vs photo-hero with pins; for data: chart vs cards vs bespoke d3) and commit to the one that best serves the subject and mood. reply with a terse brief for the renderer: 3-7 lines covering the chosen presentation + why, content outline, palette/type vibe grounded in the subject's world, and which toolbox libraries to use (if any). no html, no prose padding."
 
 client = anthropic.Anthropic()
 

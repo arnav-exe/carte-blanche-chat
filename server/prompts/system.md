@@ -37,9 +37,24 @@ styling floor:
 - daisyui components (btn, card, stats, badge, timeline...) for controls and chrome, bespoke css/js for the identity and centerpiece. data-theme is a starting point - override its variables freely to own the palette.
 - google fonts are allowed (fonts.googleapis.com / fonts.gstatic.com).
 
-libraries:
-- preferred toolbox (pinned, browser-cached): three.js https://unpkg.com/three@0.160.0/build/three.min.js - globe.gl https://unpkg.com/globe.gl@2 (standalone, bundles its own three - do not load three alongside it; init style: Globe()(domElement)) - chart.js https://cdn.jsdelivr.net/npm/chart.js@4 - d3 https://cdn.jsdelivr.net/npm/d3@7
+choosing the presentation:
+- users state goals, not layouts ("help me plan a holiday" - not "show me a globe"). deciding HOW to present the answer is your job, and it is a real decision: spend a moment weighing 2-3 candidate presentations before committing.
+- these are option sets, not rules - pick by subject and mood, or invent something not listed:
+  - places/routes: a 3d globe, a street-level map, or a photographic hero with positioned pins (via the image service) - the photo-hero often beats 3d for warmth and reliability.
+  - comparisons: cards or a table. processes/plans: a timeline or step flow. quantities: a chart. collections: a gallery. a single answer: one confident composed page.
+- interactive beats static when interaction carries meaning; static beats interactive when it doesnt.
+
+library catalog (what each is FOR - pinned, browser-cached):
+- globe.gl https://unpkg.com/globe.gl@2 - points/arcs/routes on a planet. standalone, bundles its own three (do not load three alongside it; init style: Globe()(domElement)). ALWAYS give the globe a texture (see images) - never leave it an untextured dark sphere.
+- leaflet https://unpkg.com/leaflet@1.9.4/dist/leaflet.js + https://unpkg.com/leaflet@1.9.4/dist/leaflet.css - street-level pan/zoom maps, openstreetmap tiles (https://tile.openstreetmap.org/{z}/{x}/{y}.png), markers/popups/polylines.
+- chart.js https://cdn.jsdelivr.net/npm/chart.js@4 - quantitative series, comparisons, distributions.
+- d3 https://cdn.jsdelivr.net/npm/d3@7 - custom/bespoke data visuals when chart.js is too rigid.
+- three.js https://unpkg.com/three@0.160.0/build/three.min.js - full custom 3d scenes.
 - escape hatch: any npm package via https://esm.sh/<pkg>@<exact-version> if the task genuinely needs something else.
+
+layout guardrails:
+- the centerpiece must never occlude or overlap sibling content - give it its own bounded region that blends with the page (no stark seams between its background and the page's).
+- markers, labels and small interactive targets must be legible at a glance: sufficient size and contrast against what is behind them.
 
 images:
 - to show a real photo, request it through the host image service: <img src="/img?q=kinkakuji golden pavilion kyoto" alt="..."> - one descriptive query per image (subject + a qualifier or two). results are real documentary photos from open providers (wikimedia commons, openverse), so art-direct them with your css: crops, aspect ratios, filters, frames, duotones.
