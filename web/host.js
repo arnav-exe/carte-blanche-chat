@@ -252,9 +252,9 @@ const idb = {
 
 async function sendMessage(text) {
     // sending while viewing an old page rewinds the conversation - confirm via chip, not a blocking dialog
-    const p = pages();
-    if (viewIdx >= 0 && viewIdx < p.length - 1 && !pendingRewind) {
-        pendingRewind = { text, keep: p[viewIdx].mi + 1 };
+    const pgs = pages();
+    if (viewIdx >= 0 && viewIdx < pgs.length - 1 && !pendingRewind) {
+        pendingRewind = { text, keep: pgs[viewIdx].mi + 1 };
         chipEl.textContent = `⏪ rewind to turn ${viewIdx + 1} and send`;
         chipEl.hidden = false;
         chipEl.onclick = () => {
