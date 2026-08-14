@@ -76,6 +76,8 @@ def chat(body: dict):
                     log.write(json.dumps(event) + "\n")
                     if event["t"] == "delta":
                         page.append(event["text"])
+                    elif event["t"] == "revision":  # revised page replaces the draft in the gallery
+                        page.clear()
                     yield f"data: {json.dumps(event)}\n\n"
             except anthropic.APIError as e:  # surface as an event so the dock can show it
                 yield f"data: {json.dumps({'t': 'error', 'message': str(e)})}\n\n"
