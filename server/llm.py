@@ -5,7 +5,7 @@ from pathlib import Path
 
 import anthropic
 
-from config import MODEL, EFFORT, MAX_TOKENS, FIXTURE, THEME, PIPELINE, BRIEF_MODEL
+from config import MODEL, EFFORT, MAX_TOKENS, FIXTURE, THEME, PIPELINE, BRIEF_MODEL, REVIEW
 
 KEEP_PAGES = 2  # last n assistant pages stay verbatim - older ones collapse to their page-summary
 
@@ -13,7 +13,7 @@ SYSTEM = (Path(__file__).parent / "prompts" / "system.md").read_text()
 if THEME:
     SYSTEM += f'\n\ntheme pin:\n- use data-theme="{THEME}" on <html> and build within that palette unless the user explicitly asks for a different look.'
 
-BRIEF_SYSTEM = "you are the planning half of a two stage page generator. given the conversation, reply with a terse brief for the renderer: 3-6 lines covering content outline, layout direction, palette/type vibe, and which toolbox libraries to use (if any). no html, no prose padding."
+BRIEF_SYSTEM = "you are the creative director of a two stage page generator. users state goals, not layouts - weigh 2-3 candidate presentations (eg for places: globe vs street map vs photo-hero with pins; for data: chart vs cards vs bespoke d3) and commit to the one that best serves the subject and mood. reply with a terse brief for the renderer: 3-7 lines covering the chosen presentation + why, content outline, palette/type vibe grounded in the subject's world, and which toolbox libraries to use (if any). no html, no prose padding."
 
 client = anthropic.Anthropic()
 
@@ -67,26 +67,63 @@ def stream_page(messages: list):
         text = "".join(b.text for b in brief.content if b.type == "text")
         messages = messages[:-1] + [{"role": "user", "content": messages[-1]["content"] + "\n\n[planner brief - follow unless it conflicts with the request]\n" + text}]
 
-    kwargs = _stream_kwargs(MODEL, SYSTEM, messages, MAX_TOKENS, EFFORT)
-    if MODEL.startswith(("claude-opus-5", "claude-fable-5")):  # safety classifiers can decline - reroute server side instead of dying
-        kwargs["betas"] = ["server-side-fallback-2026-06-01"]
-        kwargs["fallbacks"] = [{"model": "claude-opus-4-8"}]
-        ctx = client.beta.messages.stream(**kwargs)
-    else:
-        ctx = client.messages.stream(**kwargs)
+    draft = []
+    final = None
+    for ev in _model_stream(_stream_kwargs(MODEL, SYSTEM, messages, MAX_TOKENS, EFFORT)):
+        if ev["t"] == "_final":
+            final = ev["msg"]
+            break
+        draft.append(ev["text"])
+        yield ev
 
-    with ctx as stream:
-        for text in stream.text_stream:
-            yield {"t": "delta", "text": text}
-        final = stream.get_final_message()
+    page_html = "".join(draft)
+    out_total = final.usage.output_tokens
+    stop = final.stop_reason
+    reviewed = False
+    verdict = ""
+
+    # the perception loop: model wrote blind, now something looks at the actual pixels
+    if REVIEW == "blocking" and stop == "end_turn" and "<html" in page_html[:2000].lower():
+        yield {"t": "phase", "name": "reviewing"}
+        import review  # lazy - playwright only loads when reviewing
+        user_req = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+        verdict, notes, rtok = review.critique(user_req[:500], page_html)
+        out_total += rtok
+        reviewed = True
+        if verdict == "revise":
+            yield {"t": "revision", "notes": notes[:400]}
+            rev_messages = messages + [
+                {"role": "assistant", "content": page_html},
+                {"role": "user", "content": "[style review] the rendered page has these problems:\n" + notes + "\nre-render the FULL corrected page fixing every item. keep what already works."},
+            ]
+            for ev in _model_stream(_stream_kwargs(MODEL, SYSTEM, rev_messages, MAX_TOKENS, EFFORT)):
+                if ev["t"] == "_final":
+                    out_total += ev["msg"].usage.output_tokens
+                    stop = ev["msg"].stop_reason
+                    break
+                yield ev
 
     yield {
         "t": "done",
-        "stop_reason": final.stop_reason,
+        "stop_reason": stop,
         "model": final.model,
+        "reviewed": reviewed,
+        "verdict": verdict,
         "usage": {
             "in": final.usage.input_tokens,
-            "out": final.usage.output_tokens,
+            "out": out_total,
             "cache_read": final.usage.cache_read_input_tokens,
         },
     }
+
+
+def _model_stream(kwargs):
+    if kwargs["model"].startswith(("claude-opus-5", "claude-fable-5")):  # safety classifiers can decline - reroute server side instead of dying
+        kwargs = {**kwargs, "betas": ["server-side-fallback-2026-06-01"], "fallbacks": [{"model": "claude-opus-4-8"}]}
+        ctx = client.beta.messages.stream(**kwargs)
+    else:
+        ctx = client.messages.stream(**kwargs)
+    with ctx as stream:
+        for text in stream.text_stream:
+            yield {"t": "delta", "text": text}
+        yield {"t": "_final", "msg": stream.get_final_message()}

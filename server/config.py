@@ -16,3 +16,5 @@ FIXTURE = os.getenv("FIXTURE", "")  # path to a recorded runs/*/stream.jsonl - r
 THEME = os.getenv("THEME", "")  # pin a daisyui theme across turns (continuity dial)
 PIPELINE = os.getenv("PIPELINE", "single")  # single | staged (brief call -> render call)
 BRIEF_MODEL = os.getenv("BRIEF_MODEL", "")  # staged only - defaults to MODEL
+REVIEW = os.getenv("REVIEW", "blocking")  # blocking (draft streams, then vision review + revision before turn completes) | off
+REVIEW_MODEL = os.getenv("REVIEW_MODEL", "claude-sonnet-5")  # needs vision

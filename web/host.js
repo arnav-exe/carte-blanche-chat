@@ -252,9 +252,9 @@ const idb = {
 
 async function sendMessage(text) {
     // sending while viewing an old page rewinds the conversation - confirm via chip, not a blocking dialog
-    const p = pages();
-    if (viewIdx >= 0 && viewIdx < p.length - 1 && !pendingRewind) {
-        pendingRewind = { text, keep: p[viewIdx].mi + 1 };
+    const pgs = pages();
+    if (viewIdx >= 0 && viewIdx < pgs.length - 1 && !pendingRewind) {
+        pendingRewind = { text, keep: pgs[viewIdx].mi + 1 };
         chipEl.textContent = `⏪ rewind to turn ${viewIdx + 1} and send`;
         chipEl.hidden = false;
         chipEl.onclick = () => {
@@ -292,72 +292,67 @@ async function sendMessage(text) {
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
-    const renderer = makeRenderer();
     let buf = "";
-    let phase = "scan";
-    let pending = "";
-    let shellBuf = "";
-    let tail = "";
-    let page = "";
-    let mounted = false;
-    let outQ = "";
-    let closed = false;
-    let shellTimer = null;
+
+    // per-page stream state, resettable so a review revision can restart the render mid-turn
+    const freshPage = () => ({ renderer: makeRenderer(), phase: "scan", pending: "", shellBuf: "", tail: "", page: "", mounted: false, outQ: "", closed: false, shellTimer: null });
+    let p = freshPage();
 
     const flushQ = () => {
-        if (!mounted) return;
-        if (outQ) { renderer.append(outQ); outQ = ""; }
-        if (closed) renderer.finish();
+        if (!p.mounted) return;
+        if (p.outQ) { p.renderer.append(p.outQ); p.outQ = ""; }
+        if (p.closed) p.renderer.finish();
     };
 
     const goLive = (html) => {
-        clearTimeout(shellTimer);
-        phase = "live";
-        tShell = performance.now() - t0;
-        page += html;
+        clearTimeout(p.shellTimer);
+        p.phase = "live";
+        tShell = tShell || performance.now() - t0;
+        p.page += html;
         console.log("[cb] vt swap");
-        const mount = () => { renderer.mount(html); mounted = true; flushQ(); };
+        const cur = p;
+        const mount = () => { cur.renderer.mount(html); cur.mounted = true; flushQ(); };
         if (document.startViewTransition) document.startViewTransition(mount);
         else mount();
         statusEl.textContent = "rendering...";
     };
 
     const writeLive = (text) => {
-        const chunk = tail + text;
-        outQ += chunk.slice(0, -TAIL);
-        page += chunk.slice(0, -TAIL);
-        tail = chunk.slice(-TAIL);
+        const chunk = p.tail + text;
+        p.outQ += chunk.slice(0, -TAIL);
+        p.page += chunk.slice(0, -TAIL);
+        p.tail = chunk.slice(-TAIL);
         flushQ();
     };
 
     const write = (text) => {
-        if (phase === "scan") {
-            pending += text;
-            const m = pending.search(/<!doctype|<html/i);
+        if (p.phase === "scan") {
+            p.pending += text;
+            const m = p.pending.search(/<!doctype|<html/i);
             if (m === -1) return;
-            phase = "shell";
-            text = pending.slice(m);
-            pending = "";
+            p.phase = "shell";
+            text = p.pending.slice(m);
+            p.pending = "";
             statusEl.textContent = "composing...";
-            shellTimer = setTimeout(() => {
-                if (phase === "shell") { goLive(shellBuf); shellBuf = ""; }
+            p.shellTimer = setTimeout(() => {
+                if (p.phase === "shell") { goLive(p.shellBuf); p.shellBuf = ""; }
             }, SHELL_TIMEOUT);
         }
-        if (phase === "shell") {
-            shellBuf += text;
-            const idx = shellBuf.indexOf(MARKER);
+        if (p.phase === "shell") {
+            p.shellBuf += text;
+            const idx = p.shellBuf.indexOf(MARKER);
             if (idx >= 0) {
-                const rest = shellBuf.slice(idx + MARKER.length);
-                goLive(shellBuf.slice(0, idx));
-                shellBuf = "";
+                const rest = p.shellBuf.slice(idx + MARKER.length);
+                goLive(p.shellBuf.slice(0, idx));
+                p.shellBuf = "";
                 if (rest) writeLive(rest);
-            } else if (shellBuf.length > SHELL_LIMIT) {
-                goLive(shellBuf);
-                shellBuf = "";
+            } else if (p.shellBuf.length > SHELL_LIMIT) {
+                goLive(p.shellBuf);
+                p.shellBuf = "";
             }
             return;
         }
-        if (phase === "live") writeLive(text);
+        if (p.phase === "live") writeLive(text);
     };
 
     while (true) {
@@ -371,16 +366,23 @@ async function sendMessage(text) {
             const event = JSON.parse(part.slice(6));
             if (event.t === "delta") {
                 write(event.text);
+            } else if (event.t === "phase") {
+                statusEl.textContent = event.name === "reviewing" ? "reviewing the rendered page..." : event.name;
+            } else if (event.t === "revision") {
+                console.log("[cb] revision", JSON.stringify(event.notes));
+                statusEl.textContent = "revising: " + (event.notes || "").replace(/\n/g, " ").slice(0, 80);
+                clearTimeout(p.shellTimer);
+                p = freshPage();
             } else if (event.t === "done") {
-                if (phase !== "live") goLive(shellBuf || pending);
-                const flush = tail.replace(/\s*```\s*$/, "");
-                tail = "";
-                outQ += flush;
-                page += flush;
-                closed = true;
+                if (p.phase !== "live") goLive(p.shellBuf || p.pending);
+                const flush = p.tail.replace(/\s*```\s*$/, "");
+                p.tail = "";
+                p.outQ += flush;
+                p.page += flush;
+                p.closed = true;
                 flushQ();
-                lastPage = page;
-                messages.push({ role: "assistant", content: page });
+                lastPage = p.page;
+                messages.push({ role: "assistant", content: p.page });
                 viewIdx = pages().length - 1;
                 history.pushState({ turn: viewIdx }, "", `#t${viewIdx + 1}`);
                 updateDeck();
@@ -388,13 +390,14 @@ async function sendMessage(text) {
                 const total = ((performance.now() - t0) / 1000).toFixed(1);
                 const paint = (tShell / 1000).toFixed(1);
                 const rate = Math.round(event.usage.out / ((performance.now() - t0) / 1000));
+                const rev = event.reviewed ? (event.verdict === "revise" ? " · reviewed+revised" : " · reviewed ✓") : "";
                 if (event.stop_reason === "refusal") statusEl.textContent = "model declined - try rephrasing";
                 else if (event.stop_reason === "max_tokens") statusEl.textContent = `truncated at ${event.usage.out} tok`;
-                else statusEl.textContent = `paint ${paint}s · ${total}s · ${event.usage.out} tok (${rate}/s)`;
+                else statusEl.textContent = `paint ${paint}s · ${total}s · ${event.usage.out} tok (${rate}/s)${rev}`;
                 streaming = false;
                 maybeFixit();
             } else if (event.t === "error") {
-                clearTimeout(shellTimer);
+                clearTimeout(p.shellTimer);
                 streaming = false;
                 statusEl.textContent = "error: " + event.message.slice(0, 120);
             }
