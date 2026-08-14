@@ -15,8 +15,8 @@ check, in order of severity:
 5. does the page actually answer what the user asked
 
 reply with EXACTLY this format:
-line 1: APPROVE or REVISE
-following lines (only if REVISE): a terse numbered list of concrete, actionable fixes - what is wrong and what to do instead. max 6 items. do not nitpick taste on a page that works."""
+- first: your findings as a terse numbered list of concrete, actionable fixes - what is wrong and what to do instead. max 6 items. write "no significant issues" if the page is fine. do not nitpick taste on a page that works.
+- then the FINAL line, alone: APPROVE or REVISE"""
 
 client = anthropic.Anthropic()
 
@@ -74,6 +74,7 @@ def critique(user_request: str, html: str):
         }],
     )
     text = "".join(b.text for b in msg.content if b.type == "text").strip()
-    first, _, rest = text.partition("\n")
-    verdict = "approve" if first.strip().upper().startswith("APPROVE") else "revise"
-    return verdict, rest.strip(), msg.usage.output_tokens
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    verdict = "revise" if lines and lines[-1].upper().startswith("REVISE") else "approve"
+    notes = "\n".join(lines[:-1]) if lines else ""
+    return verdict, notes, msg.usage.output_tokens
