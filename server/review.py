@@ -13,9 +13,10 @@ check, in order of severity:
 3. legibility: contrast failures, unreadably small markers/labels, text over busy backgrounds
 4. subject fit: does the palette/mood suit the request (a holiday should not look like a funeral)
 5. does the page actually answer what the user asked
+6. genericness: does it look like a stock template or a known ai-default look (cream+serif+terracotta, near-black+acid-green, purple gradient on white) instead of an identity built for THIS subject? on a request that deserved character, a template look is worth a revise
 
 reply with EXACTLY this format:
-- first: your findings as a terse numbered list of concrete, actionable fixes - what is wrong and what to do instead. max 6 items. write "no significant issues" if the page is fine. do not nitpick taste on a page that works.
+- first: your findings as a terse numbered list of concrete, actionable fixes - what is wrong and what to do instead. max 6 items. write "no significant issues" if the page is fine. do not nitpick taste on a page that already has a committed, subject-grounded identity.
 - then the FINAL line, alone: APPROVE or REVISE"""
 
 client = anthropic.Anthropic()
