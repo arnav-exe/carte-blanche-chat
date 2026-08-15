@@ -1,6 +1,7 @@
 <script>
     import { onMount } from "svelte";
-    import { ui, initEngine } from "./engine.svelte.js";
+    import { ArrowLeft } from "lucide-svelte";
+    import { ui, initEngine, back } from "./engine.svelte.js";
     import Dock from "./Dock.svelte";
 
     let canvasEl;
@@ -15,6 +16,13 @@
         </div>
     {/if}
 </div>
+
+{#if ui.backVisible}
+    <button onclick={back} title="back to the page this came from (no regeneration)"
+        class="fixed top-4 left-4 z-50 p-2.5 rounded-full bg-[#12141c]/70 backdrop-blur-xl border border-white/10 text-slate-300 hover:bg-[#1a1d28]/80 hover:text-white shadow-lg transition-colors">
+        <ArrowLeft size={17} />
+    </button>
+{/if}
 
 {#if ui.source}
     <pre class="fixed inset-x-0 top-0 bottom-24 z-40 overflow-auto p-6 bg-black/95 text-emerald-300 text-xs whitespace-pre-wrap break-all">{ui.source}</pre>

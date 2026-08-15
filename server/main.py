@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import time
 from pathlib import Path
 
@@ -63,13 +64,15 @@ def img(q: str):
     return Response(status_code=404)  # prelude swaps in a placeholder client side
 
 
-# relay the model stream as sse, tee everything to runs/ for the gallery + fixtures
+# relay the model stream as sse, tee everything to runs/ for the gallery + fixtures,
+# and append full transcripts to runs/conversations/<conv>.jsonl for later inspection
 @app.post("/api/chat")
 def chat(body: dict):
     def gen():
         run_dir = RUNS / time.strftime("%Y%m%d-%H%M%S")
         run_dir.mkdir(parents=True, exist_ok=True)
         page = []
+        last_done = {}
         with open(run_dir / "stream.jsonl", "w") as log:
             try:
                 for event in llm.stream_page(body["messages"]):
@@ -78,10 +81,30 @@ def chat(body: dict):
                         page.append(event["text"])
                     elif event["t"] == "revision":  # revised page replaces the draft in the gallery
                         page.clear()
+                    elif event["t"] == "done":
+                        last_done = event
                     yield f"data: {json.dumps(event)}\n\n"
             except anthropic.APIError as e:  # surface as an event so the dock can show it
                 yield f"data: {json.dumps({'t': 'error', 'message': str(e)})}\n\n"
         (run_dir / "page.html").write_text("".join(page))
+
+        conv = re.sub(r"[^a-f0-9-]", "", str(body.get("conv", "")))[:36] or "anon"
+        conv_dir = RUNS / "conversations"
+        conv_dir.mkdir(parents=True, exist_ok=True)
+        with open(conv_dir / f"{conv}.jsonl", "a") as t:
+            t.write(json.dumps({
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "node": body.get("node"),
+                "parent": body.get("parent"),
+                "trigger": body.get("trigger"),
+                "prompt": body["messages"][-1]["content"][:600],
+                "history_len": len(body["messages"]),
+                "page": "".join(page),
+                "usage": last_done.get("usage"),
+                "stop_reason": last_done.get("stop_reason"),
+                "reviewed": last_done.get("reviewed"),
+                "verdict": last_done.get("verdict"),
+            }) + "\n")
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

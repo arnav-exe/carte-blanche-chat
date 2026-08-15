@@ -1,8 +1,8 @@
 <script>
     import { onMount } from "svelte";
     import gsap from "gsap";
-    import { SendHorizontal, Code2, RotateCcw, ChevronLeft, ChevronRight, Zap, Sparkles, TriangleAlert, History } from "lucide-svelte";
-    import { ui, sendMessage, navigate, chipClick, fixitClick, viewSource, reset, MODE } from "./engine.svelte.js";
+    import { SendHorizontal, Code2, RotateCcw, ChevronLeft, ChevronRight, Zap, Sparkles, TriangleAlert } from "lucide-svelte";
+    import { ui, sendPrompt, scrub, chipClick, fixitClick, viewSource, reset, MODE } from "./engine.svelte.js";
 
     let dockEl;
     let inputEl;
@@ -39,7 +39,7 @@
         const text = value.trim();
         if (!text) return;
         value = "";
-        sendMessage(text);
+        sendPrompt(text);
     }
 
     onMount(() => {
@@ -62,10 +62,8 @@
 
     {#if ui.chip}
         <button onclick={chipClick}
-            class="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm backdrop-blur-xl border transition-colors
-                   {ui.chip.kind === 'rewind' ? 'bg-sky-400/10 border-sky-300/30 text-sky-200 hover:bg-sky-400/20' : 'bg-amber-400/10 border-amber-300/30 text-amber-200 hover:bg-amber-400/20'}">
-            {#if ui.chip.kind === "rewind"}<History size={14} />{:else}<Sparkles size={14} />{/if}
-            {ui.chip.label}
+            class="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm backdrop-blur-xl border transition-colors bg-amber-400/10 border-amber-300/30 text-amber-200 hover:bg-amber-400/20">
+            <Sparkles size={14} /> {ui.chip.label}
         </button>
     {/if}
 
@@ -98,9 +96,9 @@
         </label>
 
         <div class="flex items-center gap-0.5 shrink-0 text-slate-400">
-            <button onclick={() => navigate(parseInt(ui.pos) - 2)} disabled={!ui.canPrev} class="p-1.5 rounded-full hover:bg-white/10 disabled:opacity-25"><ChevronLeft size={15} /></button>
+            <button onclick={() => scrub(-1)} disabled={!ui.canPrev} class="p-1.5 rounded-full hover:bg-white/10 disabled:opacity-25"><ChevronLeft size={15} /></button>
             {#if ui.pos}<span class="text-[11px] tabular-nums">{ui.pos}</span>{/if}
-            <button onclick={() => navigate(parseInt(ui.pos))} disabled={!ui.canNext} class="p-1.5 rounded-full hover:bg-white/10 disabled:opacity-25"><ChevronRight size={15} /></button>
+            <button onclick={() => scrub(1)} disabled={!ui.canNext} class="p-1.5 rounded-full hover:bg-white/10 disabled:opacity-25"><ChevronRight size={15} /></button>
         </div>
 
         <button onclick={submit} class="p-2.5 rounded-full bg-indigo-500 hover:bg-indigo-400 transition-colors shrink-0" title="send">
