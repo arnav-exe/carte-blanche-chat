@@ -1,7 +1,7 @@
 <script>
     import { onMount } from "svelte";
     import gsap from "gsap";
-    import { SendHorizontal, Code2, RotateCcw, ChevronLeft, ChevronRight, Zap, Sparkles, TriangleAlert } from "lucide-svelte";
+    import { SendHorizontal, Code2, RotateCcw, ChevronLeft, ChevronRight, Zap, Sparkles, TriangleAlert, History } from "lucide-svelte";
     import { ui, sendPrompt, scrub, chipClick, fixitClick, viewSource, reset, MODE } from "./engine.svelte.js";
 
     let dockEl;
@@ -13,7 +13,7 @@
     let visible = true;
 
     // dock earns its exit: slides away when idle so the page takes the spotlight
-    const wantVisible = () => near || focused || ui.streaming || !!ui.chip || !!ui.fixit || !ui.hasPage;
+    const wantVisible = () => near || focused || ui.streaming || !!ui.chip || !!ui.fixit || !ui.hasPage || ui.timelineOpen;
 
     function apply() {
         const want = wantVisible();
@@ -104,6 +104,7 @@
         <button onclick={submit} class="p-2.5 rounded-full bg-indigo-500 hover:bg-indigo-400 transition-colors shrink-0" title="send">
             <SendHorizontal size={15} />
         </button>
+        <button onclick={() => ui.timelineOpen = !ui.timelineOpen} class="p-2.5 rounded-full hover:bg-white/10 shrink-0 {ui.timelineOpen ? 'text-indigo-300' : 'text-slate-400'}" title="conversation timeline"><History size={15} /></button>
         <button onclick={viewSource} class="p-2.5 rounded-full hover:bg-white/10 text-slate-400 shrink-0" title="view page source"><Code2 size={15} /></button>
         <button onclick={reset} class="p-2.5 rounded-full hover:bg-white/10 text-slate-400 shrink-0" title="reset conversation"><RotateCcw size={15} /></button>
     </div>
