@@ -1,5 +1,6 @@
-// the host engine - stream machine, render modes, history deck. ported from v1 web/host.js
-// ui state is runes-reactive; svelte components read it, the engine writes it
+// the host engine - stream machine, render modes, and the conversation TREE.
+// nodes are pages, edges are what triggered them (typed prompt or ui event).
+// event edges are memoized: re-clicking the same thing re-renders the cached child, no model call.
 
 const params = new URLSearchParams(location.search);
 export const MODE = params.get("mode") || "iframe";   // iframe | raw | raw-bare
@@ -18,30 +19,50 @@ export const ui = $state({
     pos: "",
     canPrev: false,
     canNext: false,
-    chip: null,        // { label, kind: "action" | "rewind" }
-    fixit: null,       // label
+    chip: null,        // { label }
+    fixit: null,
     auto: true,
     streaming: false,
     hasPage: false,
     source: "",
+    backVisible: false,
+    onLive: true,
+    trigger: null,     // { kind, label } of the node on screen
+    timelineOpen: false,
+    timeline: [],      // [{ id, label, kind, depth, isCurrent }]
 });
 
 let canvas = null;
-let messages = [];
 let controller = null;
-let lastPage = "";
 let preludeSrc = "";
 let actionBuf = [];
 let actionTimer = null;
 let pageErrors = [];
-let viewIdx = -1;
-let pendingRewind = null;
 let chipAction = null;
 
-const pages = () => messages.map((m, mi) => ({ ...m, mi })).filter(m => m.role === "assistant");
+// conversation tree
+let nodes = {};        // id -> { id, parent, trigger: {kind, text, label, key}, html, ts }
+let order = [];        // creation order
+let current = null;    // node id on screen
+let convId = crypto.randomUUID();
+
+const node = (id) => nodes[id];
+const latest = () => order[order.length - 1] || null;
+const children = (id) => order.filter(n => nodes[n].parent === id);
+
+function path(id) {
+    const chain = [];
+    for (let n = node(id); n; n = node(n.parent)) chain.unshift(n);
+    return chain;
+}
+
+const apiMessages = (id) => path(id).flatMap(n => [
+    { role: "user", content: n.trigger.text },
+    { role: "assistant", content: n.html },
+]);
 
 
-/* ---------- raw mode engine ---------- */
+/* ---------- raw mode engine (unchanged mechanics) ---------- */
 
 const rawRoot = document.createElement("div");
 rawRoot.id = "raw-root";
@@ -84,22 +105,21 @@ function sweep() {
     for (const id of registry.rafs) cancelAnimationFrame(id);
     for (const [t, type, fn] of registry.listeners) t.removeEventListener(type, fn);
     for (const n of registry.headNodes) n.remove();
-    console.log("[cb] sweep", JSON.stringify({ intervals: registry.intervals.size, timers: registry.timers.size, styles: registry.headNodes.length }));
     registry = null;
 }
 
 const scopeCss = (css) => `@scope (#raw-root) {\n${css.replace(/(^|[,\s{}])(body|html)(?=[\s,{.:#[])/g, "$1#raw-root")}\n}`;
 
-function execScript(node) {
+function execScript(sn) {
     const s = document.createElement("script");
-    if (node.type) s.type = node.type;
-    if (node.src) {
-        if (loadedSrcs.has(node.src)) return;
-        loadedSrcs.add(node.src);
-        s.src = node.src;
+    if (sn.type) s.type = sn.type;
+    if (sn.src) {
+        if (loadedSrcs.has(sn.src)) return;
+        loadedSrcs.add(sn.src);
+        s.src = sn.src;
         s.async = false;
     } else {
-        s.textContent = MODE === "raw" && node.type !== "module" ? `(() => {\n${node.textContent}\n})()` : node.textContent;
+        s.textContent = MODE === "raw" && sn.type !== "module" ? `(() => {\n${sn.textContent}\n})()` : sn.textContent;
     }
     executing = true;
     try { rawRoot.appendChild(s); } finally { executing = false; }
@@ -197,71 +217,93 @@ function renderStatic(html) {
 }
 
 
-/* ---------- history deck ---------- */
+/* ---------- viewing + deck ---------- */
 
-function updateDeck() {
-    const p = pages();
-    ui.pos = p.length ? `${viewIdx + 1}/${p.length}` : "";
-    ui.canPrev = viewIdx > 0;
-    ui.canNext = viewIdx < p.length - 1;
+function syncUi() {
+    const n = current ? node(current) : null;
+    const idx = order.indexOf(current);
+    ui.pos = order.length ? `${idx + 1}/${order.length}` : "";
+    ui.canPrev = idx > 0;
+    ui.canNext = idx >= 0 && idx < order.length - 1;
+    ui.backVisible = !!n?.parent;
+    ui.onLive = !order.length || current === latest();
+    ui.trigger = n ? { kind: n.trigger.kind, label: n.trigger.label } : null;
+    ui.timeline = order.map(id => ({
+        id,
+        label: nodes[id].trigger.label,
+        kind: nodes[id].trigger.kind,
+        depth: path(id).length - 1,
+        isCurrent: id === current,
+    }));
 }
 
-export function navigate(i, { push = true } = {}) {
-    const p = pages();
-    if (i < 0 || i >= p.length) return;
-    viewIdx = i;
-    renderStatic(p[i].content);
-    lastPage = p[i].content;
-    if (push) history.pushState({ turn: i }, "", `#t${i + 1}`);
-    ui.hint = i === p.length - 1 ? "" : `viewing turn ${i + 1} of ${p.length}`;
-    updateDeck();
+export function view(id, { push = true } = {}) {
+    if (!node(id)) return;
+    current = id;
+    renderStatic(node(id).html);
+    if (push) history.pushState({ node: id }, "", `#n-${order.indexOf(id) + 1}`);
+    syncUi();
+    idb.save();
 }
+
+export function back() { if (node(current)?.parent) view(node(current).parent); }
+export function goLatest() { if (latest()) view(latest()); }
+export function scrub(delta) {
+    const idx = order.indexOf(current) + delta;
+    if (idx >= 0 && idx < order.length) view(order[idx]);
+}
+export function timelineJump(id) { view(id); }
 
 window.addEventListener("popstate", (e) => {
-    if (typeof e.state?.turn === "number") navigate(e.state.turn, { push: false });
+    if (e.state?.node && node(e.state.node)) view(e.state.node, { push: false });
 });
 
 
-/* ---------- idb: one conversation slot ---------- */
+/* ---------- idb: tree, one conversation slot ---------- */
 
 const idb = {
     db: null,
     open: () => new Promise((res) => {
-        const rq = indexedDB.open("carte-blanche", 1);
-        rq.onupgradeneeded = () => rq.result.createObjectStore("conv", { keyPath: "id" });
+        const rq = indexedDB.open("carte-blanche", 2);
+        rq.onupgradeneeded = () => {
+            if (!rq.result.objectStoreNames.contains("conv")) rq.result.createObjectStore("conv", { keyPath: "id" });
+        };
         rq.onsuccess = () => { idb.db = rq.result; res(); };
         rq.onerror = () => res();
     }),
-    save() { this.db?.transaction("conv", "readwrite").objectStore("conv").put({ id: "current", messages, ts: Date.now() }); },
+    save() { this.db?.transaction("conv", "readwrite").objectStore("conv").put({ id: "current", nodes, order, current, convId, ts: Date.now() }); },
     load: () => new Promise((res) => {
         if (!idb.db) return res(null);
         const rq = idb.db.transaction("conv").objectStore("conv").get("current");
-        rq.onsuccess = () => res(rq.result?.messages || null);
+        rq.onsuccess = () => res(rq.result || null);
         rq.onerror = () => res(null);
     }),
     clear() { this.db?.transaction("conv", "readwrite").objectStore("conv").delete("current"); },
 };
 
-
-/* ---------- streaming turn ---------- */
-
-export async function sendMessage(text) {
-    const pgs = pages();
-    if (viewIdx >= 0 && viewIdx < pgs.length - 1 && !pendingRewind) {
-        pendingRewind = { text, keep: pgs[viewIdx].mi + 1 };
-        ui.chip = { label: `rewind to turn ${viewIdx + 1} and send`, kind: "rewind" };
-        chipAction = () => {
-            const r = pendingRewind;
-            pendingRewind = null;
-            ui.chip = null;
-            messages = messages.slice(0, r.keep);
-            sendMessage(r.text);
+// v1 slots stored a flat messages array - fold it into a chain of nodes
+function migrateV1(saved) {
+    const out = { nodes: {}, order: [], current: null };
+    let parent = null;
+    for (let i = 0; i + 1 < saved.messages.length; i += 2) {
+        const text = saved.messages[i].content;
+        const id = crypto.randomUUID();
+        out.nodes[id] = {
+            id, parent, ts: Date.now(),
+            trigger: { kind: text.startsWith("[ui event]") ? "event" : "prompt", text, label: text.slice(0, 80), key: null },
+            html: saved.messages[i + 1].content,
         };
-        ui.hint = "sending from the past rewinds the turns after it";
-        return;
+        out.order.push(id);
+        parent = id;
     }
-    pendingRewind = null;
+    out.current = parent;
+    return out;
+}
 
+
+/* ---------- generation ---------- */
+
+async function generate(trigger) {
     controller?.abort();
     controller = new AbortController();
     actionBuf = [];
@@ -270,17 +312,25 @@ export async function sendMessage(text) {
     ui.fixit = null;
     pageErrors = [];
     ui.streaming = true;
-    messages.push({ role: "user", content: text });
     ui.status = "thinking...";
     ui.hint = "";
 
+    const parent = current;
+    const nodeId = crypto.randomUUID();
     const t0 = performance.now();
     let tShell = 0;
+    let doneMeta = null;
 
     const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages }),
+        body: JSON.stringify({
+            messages: [...(parent ? apiMessages(parent) : []), { role: "user", content: trigger.text }],
+            conv: convId,
+            node: nodeId,
+            parent,
+            trigger: { kind: trigger.kind, label: trigger.label },
+        }),
         signal: controller.signal,
     });
 
@@ -302,7 +352,6 @@ export async function sendMessage(text) {
         pg.phase = "live";
         tShell = tShell || performance.now() - t0;
         pg.page += html;
-        console.log("[cb] vt swap");
         const cur = pg;
         const run = () => { cur.renderer.mount(html); cur.mounted = true; flushQ(); };
         if (document.startViewTransition) document.startViewTransition(run);
@@ -375,12 +424,15 @@ export async function sendMessage(text) {
                 pg.page += flush;
                 pg.closed = true;
                 flushQ();
-                lastPage = pg.page;
-                messages.push({ role: "assistant", content: pg.page });
-                viewIdx = pages().length - 1;
-                history.pushState({ turn: viewIdx }, "", `#t${viewIdx + 1}`);
-                updateDeck();
+                doneMeta = event;
+
+                nodes[nodeId] = { id: nodeId, parent, trigger, html: pg.page, ts: Date.now() };
+                order.push(nodeId);
+                current = nodeId;
+                history.pushState({ node: nodeId }, "", `#n-${order.length}`);
+                syncUi();
                 idb.save();
+
                 const total = ((performance.now() - t0) / 1000).toFixed(1);
                 const paint = (tShell / 1000).toFixed(1);
                 const rate = Math.round(event.usage.out / ((performance.now() - t0) / 1000));
@@ -397,6 +449,27 @@ export async function sendMessage(text) {
             }
         }
     }
+}
+
+export function sendPrompt(text, label = null) {
+    if (!text.trim()) return;
+    generate({ kind: "prompt", text, label: label || (text.length > 60 ? text.slice(0, 57) + "..." : text), key: null });
+}
+
+function sendEvents(events) {
+    const text = events.map(a => `[ui event] action=${a.action || "?"}${a.label ? ` label="${a.label}"` : ""}${a.data !== undefined ? " data=" + JSON.stringify(a.data) : ""}`).join("\n");
+    const label = "clicked: " + (events[0].label || events[0].action) + (events.length > 1 ? ` +${events.length - 1}` : "");
+    const key = events.map(a => `${a.action}|${a.label}|${JSON.stringify(a.data)}`).join("&");
+
+    // memoized edge: same interaction from this page already has a generated child - just show it
+    const hit = children(current).find(c => nodes[c].trigger.key === key);
+    if (hit) {
+        console.log("[cb] memo hit", key);
+        ui.hint = "already generated - showing it";
+        view(hit);
+        return;
+    }
+    generate({ kind: "event", text, label, key });
 }
 
 
@@ -422,16 +495,13 @@ function flushActions() {
     const events = Object.values(seen);
     actionBuf = [];
     if (!events.length) return;
-
-    const text = events.map(a => `[ui event] action=${a.action || "?"}${a.label ? ` label="${a.label}"` : ""}${a.data !== undefined ? " data=" + JSON.stringify(a.data) : ""}`).join("\n");
-    const label = (events[0].label || events[0].action) + (events.length > 1 ? ` +${events.length - 1}` : "");
-    console.log("[cb] flush", JSON.stringify({ auto: ui.auto, text }));
+    console.log("[cb] flush", JSON.stringify({ auto: ui.auto, n: events.length }));
 
     if (ui.auto) {
-        sendMessage(text);
+        sendEvents(events);
     } else {
-        ui.chip = { label, kind: "action" };
-        chipAction = () => { ui.chip = null; sendMessage(text); };
+        ui.chip = { label: "clicked: " + (events[0].label || events[0].action) + (events.length > 1 ? ` +${events.length - 1}` : "") };
+        chipAction = () => { ui.chip = null; sendEvents(events); };
     }
 }
 
@@ -445,11 +515,11 @@ export function chipClick() { chipAction?.(); }
 export function fixitClick() {
     const lines = pageErrors.slice(0, 3).map(e => e.message + (e.line ? ` (line ${e.line})` : ""));
     ui.fixit = null;
-    sendMessage("[page error] " + lines.join(" | ") + " - the page you rendered threw at runtime. fix the bug and re-render the corrected page.");
+    sendPrompt("[page error] " + lines.join(" | ") + " - the page you rendered threw at runtime. fix the bug and re-render the corrected page.", "fix page");
 }
 
 export function viewSource() {
-    ui.source = ui.source ? "" : (lastPage || "(nothing rendered yet)");
+    ui.source = ui.source ? "" : (current ? node(current).html : "(nothing rendered yet)");
 }
 
 export function reset() {
@@ -488,17 +558,19 @@ export async function initEngine(canvasEl) {
     }
 
     await idb.open();
-    const saved = await idb.load();
-    if (saved?.length) {
-        messages = saved;
-        viewIdx = pages().length - 1;
-        if (viewIdx >= 0) {
-            renderStatic(pages()[viewIdx].content);
-            lastPage = pages()[viewIdx].content;
-            history.replaceState({ turn: viewIdx }, "", `#t${viewIdx + 1}`);
-            ui.status = "restored";
-        }
-        updateDeck();
+    let saved = await idb.load();
+    if (saved?.messages) saved = { ...migrateV1(saved), convId: crypto.randomUUID() };
+    if (saved?.order?.length) {
+        nodes = saved.nodes;
+        order = saved.order;
+        current = saved.current || latest();
+        convId = saved.convId || convId;
+        renderStatic(node(current).html);
+        history.replaceState({ node: current }, "", `#n-${order.indexOf(current) + 1}`);
+        ui.status = "restored";
+        syncUi();
     }
-    console.log("[cb] mode", MODE, "libs", LIBS);
+
+    window.__cb = { get tree() { return { nodes, order, current, convId }; }, ui };  // debug handle for dev tooling
+    console.log("[cb] mode", MODE, "libs", LIBS, "conv", convId);
 }
