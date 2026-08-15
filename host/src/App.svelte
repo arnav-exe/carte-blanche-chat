@@ -3,6 +3,8 @@
     import { ArrowLeft } from "lucide-svelte";
     import { ui, initEngine, back } from "./engine.svelte.js";
     import Dock from "./Dock.svelte";
+    import HistoryBar from "./HistoryBar.svelte";
+    import Timeline from "./Timeline.svelte";
 
     let canvasEl;
     onMount(() => { initEngine(canvasEl); });
@@ -28,4 +30,6 @@
     <pre class="fixed inset-x-0 top-0 bottom-24 z-40 overflow-auto p-6 bg-black/95 text-emerald-300 text-xs whitespace-pre-wrap break-all">{ui.source}</pre>
 {/if}
 
+<HistoryBar />
+<Timeline />
 <Dock />

@@ -518,6 +518,8 @@ export function fixitClick() {
     sendPrompt("[page error] " + lines.join(" | ") + " - the page you rendered threw at runtime. fix the bug and re-render the corrected page.", "fix page");
 }
 
+export const nodeHtml = (id) => nodes[id]?.html || "";
+
 export function viewSource() {
     ui.source = ui.source ? "" : (current ? node(current).html : "(nothing rendered yet)");
 }
@@ -571,6 +573,6 @@ export async function initEngine(canvasEl) {
         syncUi();
     }
 
-    window.__cb = { get tree() { return { nodes, order, current, convId }; }, ui };  // debug handle for dev tooling
+    window.__cb = { get tree() { return { nodes, order, current, convId }; }, ui, scrub, view, back, goLatest, sendPrompt };  // debug handle for dev tooling
     console.log("[cb] mode", MODE, "libs", LIBS, "conv", convId);
 }
